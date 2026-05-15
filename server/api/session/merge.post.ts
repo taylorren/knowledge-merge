@@ -1,4 +1,5 @@
 import { generateMergeNarrative } from '../../utils/ai-generation'
+import { protectAiUsageEndpoint } from '../../utils/ai-access-guard'
 import { declareMergeForActiveSession, getActiveSessionWithSteps } from '../../utils/knowledge-store'
 
 interface MergeBody {
@@ -7,6 +8,7 @@ interface MergeBody {
 }
 
 export default defineEventHandler(async event => {
+  protectAiUsageEndpoint(event)
   const body = await readBody<MergeBody>(event)
   const mergedConcept = typeof body.mergedConcept === 'string' ? body.mergedConcept.trim() : ''
   const narrative = typeof body.narrative === 'string' ? body.narrative.trim() : undefined

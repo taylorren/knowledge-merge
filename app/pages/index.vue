@@ -1,592 +1,195 @@
 <template>
-  <div class="page">
-    <main class="container">
-      <header class="header">
-        <h1>Knowledge Merges</h1>
-        <p>Explore two branches, discover links, and archive your merge concepts.</p>
-      </header>
-
-      <section class="card">
-        <h2>Model</h2>
-        <label class="switch-row">
-          <span>Remote AI</span>
-          <input v-model="useCloudProvider" :disabled="isUpdatingProvider" type="checkbox" />
-          <span>{{ useCloudProvider ? 'On' : 'Off' }}</span>
-        </label>
-        <p class="muted">Current model: <strong>{{ activeModelName }}</strong></p>
-        <p v-if="isUpdatingProvider" class="muted">Updating provider...</p>
-      </section>
-
-      <section class="card">
-        <h2>Start a session</h2>
-        <form class="form-grid" @submit.prevent="startSession">
-          <label>
-            Left topic
-            <input v-model="startForm.leftTopic" required placeholder="e.g. Neural networks" />
-          </label>
-          <label>
-            Right topic
-            <input v-model="startForm.rightTopic" required placeholder="e.g. Renaissance art" />
-          </label>
-          <button :disabled="isSubmittingStart" type="submit">
-            {{ isSubmittingStart ? 'Starting...' : 'Start new session' }}
-          </button>
-        </form>
-      </section>
-
-      <section v-if="activeSession" class="card">
-        <h2>Session branches</h2>
-        <div class="branches-layout">
-          <section class="branch-column">
-            <h3>Left branch</h3>
-            <div class="branch-stack">
-              <article v-for="step in getBranchSteps('left')" :key="step.id" class="branch-card">
-                <p class="muted">Topic</p>
-                <p class="topic-value">{{ step.keyword }}</p>
-                <p class="muted">AI output</p>
-                <p class="summary-text">{{ step.summary }}</p>
-
-                <div class="next-layout">
-                  <p class="muted">Suggested next topics</p>
-                  <ul class="suggestions">
-                    <li v-for="suggestion in step.suggestions" :key="`left-${step.id}-${suggestion}`">
-                      <button
-                        v-if="isLatestStep('left', step.id)"
-                        class="suggestion-button"
-                        type="button"
-                        @click="setBranchChoice('left', suggestion)"
-                      >
-                        {{ cleanSuggestion(suggestion) }}
-                      </button>
-                      <span v-else class="suggestion-chip">{{ cleanSuggestion(suggestion) }}</span>
-                    </li>
-                    <li v-if="!step.suggestions.length" class="muted">
-                      No suggestions available yet.
-                    </li>
-                  </ul>
-
-                  <form
-                    v-if="isLatestStep('left', step.id)"
-                    class="choice-row"
-                    @submit.prevent="continueBranch('left')"
-                  >
-                    <input
-                      v-model="branchChoice.left"
-                      placeholder="Your pick"
-                      required
-                    />
-                    <button :disabled="isSubmittingBranch.left" type="submit">
-                      {{ isSubmittingBranch.left ? 'Continuing...' : 'Continue' }}
-                    </button>
-                  </form>
-                  <div v-else class="muted">Historical step</div>
-                </div>
-              </article>
-              <article v-if="!getBranchSteps('left').length" class="branch-card">
-                <p class="muted">No left-branch steps yet.</p>
-              </article>
+  <div class="min-h-screen bg-gradient-to-b from-neutral-50 to-white">
+    <UContainer class="py-10 sm:py-16">
+      <div class="mx-auto grid max-w-5xl gap-5 lg:grid-cols-2">
+        <UCard class="border border-default/60 shadow-sm">
+          <template #header>
+            <div class="space-y-2">
+              <UBadge color="primary" variant="soft" label="Knowledge Workspace" />
+              <div>
+                <h1 class="text-2xl font-semibold tracking-tight sm:text-3xl">Knowledge Merges</h1>
+                <p class="mt-2 text-sm text-muted">
+                  Sign in to generate and merge concepts with a cleaner, focused workflow.
+                </p>
+              </div>
             </div>
+          </template>
+
+          <section v-if="isCheckingAuth">
+            <USkeleton class="h-5 w-44" />
+            <USkeleton class="mt-3 h-10 w-full" />
+            <USkeleton class="mt-3 h-10 w-full" />
+            <USkeleton class="mt-4 h-9 w-28" />
           </section>
 
-          <section class="branch-column">
-            <h3>Right branch</h3>
-            <div class="branch-stack">
-              <article v-for="step in getBranchSteps('right')" :key="step.id" class="branch-card">
-                <p class="muted">Topic</p>
-                <p class="topic-value">{{ step.keyword }}</p>
-                <p class="muted">AI output</p>
-                <p class="summary-text">{{ step.summary }}</p>
-
-                <div class="next-layout">
-                  <p class="muted">Suggested next topics</p>
-                  <ul class="suggestions">
-                    <li v-for="suggestion in step.suggestions" :key="`right-${step.id}-${suggestion}`">
-                      <button
-                        v-if="isLatestStep('right', step.id)"
-                        class="suggestion-button"
-                        type="button"
-                        @click="setBranchChoice('right', suggestion)"
-                      >
-                        {{ cleanSuggestion(suggestion) }}
-                      </button>
-                      <span v-else class="suggestion-chip">{{ cleanSuggestion(suggestion) }}</span>
-                    </li>
-                    <li v-if="!step.suggestions.length" class="muted">
-                      No suggestions available yet.
-                    </li>
-                  </ul>
-
-                  <form
-                    v-if="isLatestStep('right', step.id)"
-                    class="choice-row"
-                    @submit.prevent="continueBranch('right')"
-                  >
-                    <input
-                      v-model="branchChoice.right"
-                      placeholder="Your pick"
-                      required
-                    />
-                    <button :disabled="isSubmittingBranch.right" type="submit">
-                      {{ isSubmittingBranch.right ? 'Continuing...' : 'Continue' }}
-                    </button>
-                  </form>
-                  <div v-else class="muted">Historical step</div>
-                </div>
-              </article>
-              <article v-if="!getBranchSteps('right').length" class="branch-card">
-                <p class="muted">No right-branch steps yet.</p>
-              </article>
+          <section v-else class="space-y-5">
+            <div class="space-y-1">
+              <h2 class="text-lg font-medium">Sign in</h2>
+              <p class="text-sm text-muted">Use your workspace credentials to continue.</p>
             </div>
-          </section>
-        </div>
 
-        <div class="merge-card">
-          <h3>Declare merge</h3>
-          <form class="stack" @submit.prevent="declareMerge">
-            <input v-model="mergeForm.mergedConcept" placeholder="Merged concept" required />
-            <textarea
-              v-model="mergeForm.narrative"
-              placeholder="Optional: how both branches converge (leave blank for AI)"
-              rows="3"
+            <form class="space-y-4" @submit.prevent="signIn">
+              <UFormField label="Username" required>
+                <UInput
+                  v-model="loginForm.username"
+                  required
+                  autocomplete="username"
+                  placeholder="jane.doe"
+                  size="lg"
+                  class="w-full"
+                />
+              </UFormField>
+
+              <UFormField label="Password" required>
+                <UInput
+                  v-model="loginForm.password"
+                  :type="isPasswordVisible ? 'text' : 'password'"
+                  required
+                  autocomplete="current-password"
+                  placeholder="••••••••"
+                  size="lg"
+                  class="w-full"
+                >
+                  <template #trailing>
+                    <UButton
+                      type="button"
+                      color="neutral"
+                      variant="ghost"
+                      size="sm"
+                      :icon="isPasswordVisible ? 'i-lucide-eye-off' : 'i-lucide-eye'"
+                      :aria-label="isPasswordVisible ? 'Hide password' : 'Show password'"
+                      @click="isPasswordVisible = !isPasswordVisible"
+                    />
+                  </template>
+                </UInput>
+              </UFormField>
+
+              <UButton
+                type="submit"
+                :loading="isSigningIn"
+                :disabled="!isAuthConfigured"
+                label="Sign in"
+                size="lg"
+                class="w-full justify-center"
+              />
+            </form>
+
+            <UAlert
+              v-if="!isAuthConfigured"
+              color="error"
+              variant="soft"
+              title="Server login is not configured"
+              description="Set APP_AUTH_USERNAME and APP_AUTH_PASSWORD."
             />
-            <button :disabled="isSubmittingMerge" type="submit">
-              {{ isSubmittingMerge ? 'Saving...' : 'Complete and archive merge' }}
-            </button>
-          </form>
-        </div>
-      </section>
 
-      <section v-else class="card">
-        <h2>No active session</h2>
-        <p class="muted">Start one above to generate both branch cards.</p>
-      </section>
+            <UAlert v-if="errorMessage" color="error" variant="soft" :title="errorMessage" />
+          </section>
+        </UCard>
 
-      <section class="card">
-        <h2>Archives</h2>
-        <p class="muted">Browse merged cards in a dedicated archive page.</p>
-        <NuxtLink class="button-link" to="/archives">Open archives</NuxtLink>
-      </section>
+        <UCard class="border border-default/60 shadow-sm">
+          <template #header>
+            <h2 class="text-lg font-medium">Public archives</h2>
+          </template>
 
-      <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-    </main>
+          <div class="space-y-3">
+            <p class="text-sm text-muted">
+              Explore archived merge cards and previously published concept combinations.
+            </p>
+            <ul class="list-disc space-y-1 pl-4 text-sm text-toned">
+              <li>Browse without signing in</li>
+              <li>Open and review historical merges</li>
+              <li>Share links to specific archive entries</li>
+            </ul>
+          </div>
+
+          <template #footer>
+            <UButton
+              to="/archives"
+              color="neutral"
+              variant="subtle"
+              label="Open archives"
+              icon="i-lucide-arrow-right"
+              trailing
+            />
+          </template>
+        </UCard>
+      </div>
+    </UContainer>
   </div>
 </template>
 
 <script setup lang="ts">
-type BranchSide = 'left' | 'right'
-
-interface BranchStep {
-  id: number
-  branch: BranchSide
-  stepIndex: number
-  keyword: string
-  summary: string
-  suggestions: string[]
+interface AuthState {
+  configured: boolean
+  authenticated: boolean
+  username: string | null
 }
 
-interface ActiveSessionPayload {
-  session: {
-    id: number
-    leftTopic: string
-    rightTopic: string
-    status: 'active' | 'merged' | 'abandoned'
-  }
-  leftSteps: BranchStep[]
-  rightSteps: BranchStep[]
-}
-
-interface AiSettings {
-  activeProvider: 'local' | 'cloud'
-  localBaseUri: string
-  localModel: string
-  cloudBaseUri: string
-  cloudModel: string
-  hasCloudApiKey: boolean
-}
-
-const activeSession = ref<ActiveSessionPayload | null>(null)
-const aiSettings = ref<AiSettings | null>(null)
+const authState = ref<AuthState | null>(null)
 const errorMessage = ref('')
+const isSigningIn = ref(false)
+const isCheckingAuth = ref(true)
+const isPasswordVisible = ref(false)
 
-const startForm = reactive({
-  leftTopic: '',
-  rightTopic: ''
+const loginForm = reactive({
+  username: '',
+  password: ''
 })
 
-const branchChoice = reactive({
-  left: '',
-  right: ''
-})
+const isAuthConfigured = computed(() => authState.value?.configured !== false)
 
-const mergeForm = reactive({
-  mergedConcept: '',
-  narrative: ''
-})
-
-const isSubmittingStart = ref(false)
-const isSubmittingMerge = ref(false)
-const isUpdatingProvider = ref(false)
-const isSubmittingBranch = reactive({
-  left: false,
-  right: false
-})
-
-const useCloudProvider = computed({
-  get: () => aiSettings.value?.activeProvider === 'cloud',
-  set: value => {
-    void setActiveProvider(value ? 'cloud' : 'local')
-  }
-})
-
-const activeModelName = computed(() => {
-  if (!aiSettings.value) {
-    return '(loading...)'
-  }
-
-  return aiSettings.value.activeProvider === 'cloud'
-    ? aiSettings.value.cloudModel || '(cloud model not configured)'
-    : aiSettings.value.localModel
-})
-
-function getBranchSteps(branch: BranchSide): BranchStep[] {
-  if (!activeSession.value) {
-    return []
-  }
-
-  return branch === 'left' ? activeSession.value.leftSteps : activeSession.value.rightSteps
+async function refreshAuthState() {
+  const response = await $fetch<{ auth: AuthState }>('/api/auth/session', {
+    credentials: 'include'
+  })
+  authState.value = response.auth
 }
 
-function isLatestStep(branch: BranchSide, stepId: number): boolean {
-  const steps = getBranchSteps(branch)
-  return Boolean(steps.length && steps[steps.length - 1]?.id === stepId)
-}
-
-function cleanSuggestion(suggestion: string): string {
-  const withoutPrefix = suggestion.replace(/^next\s*keyword\s*[:：-]\s*/i, '').trim()
-  const firstToken = withoutPrefix.split(/\s+/)[0] ?? ''
-  return firstToken.replace(/^[^\p{L}\p{N}_-]+|[^\p{L}\p{N}_-]+$/gu, '')
-}
-
-function setBranchChoice(branch: BranchSide, suggestion: string) {
-  branchChoice[branch] = cleanSuggestion(suggestion)
-}
-
-async function refreshActiveSession() {
-  const response = await $fetch<{ activeSession: ActiveSessionPayload | null }>('/api/session/active')
-  activeSession.value = response.activeSession
-}
-
-async function refreshAiSettings() {
-  const response = await $fetch<{ aiSettings: AiSettings }>('/api/ai/settings')
-  aiSettings.value = response.aiSettings
-}
-
-async function loadInitialData() {
+async function initializeLoginPage() {
   errorMessage.value = ''
+  isCheckingAuth.value = true
   try {
-    await Promise.all([refreshActiveSession(), refreshAiSettings()])
+    await refreshAuthState()
+    if (authState.value?.authenticated) {
+      await navigateTo('/workspace')
+      return
+    }
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Failed to load initial data.'
-  }
-}
-
-async function setActiveProvider(activeProvider: 'local' | 'cloud') {
-  errorMessage.value = ''
-  isUpdatingProvider.value = true
-  try {
-    const response = await $fetch<{ aiSettings: AiSettings }>('/api/ai/settings', {
-      method: 'POST',
-      body: {
-        activeProvider
-      }
-    })
-    aiSettings.value = response.aiSettings
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Failed to save AI settings.'
-    await refreshAiSettings()
+    errorMessage.value = error instanceof Error ? error.message : 'Failed to check authentication.'
   } finally {
-    isUpdatingProvider.value = false
+    isCheckingAuth.value = false
   }
 }
 
-async function startSession() {
+async function signIn() {
   errorMessage.value = ''
-  isSubmittingStart.value = true
-  try {
-    const response = await $fetch<{ activeSession: ActiveSessionPayload }>('/api/session/start', {
-      method: 'POST',
-      body: {
-        leftTopic: startForm.leftTopic,
-        rightTopic: startForm.rightTopic
-      }
-    })
-
-    activeSession.value = response.activeSession
-    startForm.leftTopic = ''
-    startForm.rightTopic = ''
-    branchChoice.left = ''
-    branchChoice.right = ''
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Failed to start session.'
-  } finally {
-    isSubmittingStart.value = false
-  }
-}
-
-async function continueBranch(branch: BranchSide) {
-  errorMessage.value = ''
-  const keyword = branchChoice[branch].trim()
-  if (!keyword) {
-    errorMessage.value = 'Please provide a next topic choice.'
+  if (!isAuthConfigured.value) {
+    errorMessage.value = 'Server login is not configured.'
     return
   }
 
-  isSubmittingBranch[branch] = true
+  isSigningIn.value = true
   try {
-    const response = await $fetch<{ activeSession: ActiveSessionPayload }>('/api/session/step', {
+    const response = await $fetch<{ auth: AuthState }>('/api/auth/login', {
       method: 'POST',
+      credentials: 'include',
       body: {
-        branch,
-        keyword
+        username: loginForm.username,
+        password: loginForm.password
       }
     })
 
-    activeSession.value = response.activeSession
-    branchChoice[branch] = ''
+    authState.value = response.auth
+    loginForm.password = ''
+    await navigateTo('/workspace')
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Failed to continue branch.'
+    errorMessage.value = error instanceof Error ? error.message : 'Sign-in failed.'
   } finally {
-    isSubmittingBranch[branch] = false
+    isSigningIn.value = false
   }
 }
 
-async function declareMerge() {
-  errorMessage.value = ''
-  isSubmittingMerge.value = true
-  try {
-    await $fetch('/api/session/merge', {
-      method: 'POST',
-      body: {
-        mergedConcept: mergeForm.mergedConcept,
-        narrative: mergeForm.narrative || undefined
-      }
-    })
-
-    mergeForm.mergedConcept = ''
-    mergeForm.narrative = ''
-    await refreshActiveSession()
-  } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : 'Failed to declare merge.'
-  } finally {
-    isSubmittingMerge.value = false
-  }
-}
-
-onMounted(loadInitialData)
+onMounted(() => {
+  void initializeLoginPage()
+})
 </script>
-
-<style scoped>
-.page {
-  min-height: 100vh;
-  background: #f5f7fb;
-  color: #111827;
-  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-.container {
-  margin: 0 auto;
-  max-width: 1100px;
-  padding: 2rem 1rem 3rem;
-}
-
-.header h1 {
-  margin: 0;
-  font-size: 1.8rem;
-}
-
-.header p {
-  margin: 0.35rem 0 0;
-  color: #4b5563;
-}
-
-.card {
-  margin-top: 1rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.75rem;
-  background: #fff;
-  padding: 1rem;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr auto;
-  gap: 0.75rem;
-  align-items: end;
-}
-
-.form-grid label,
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-input:not([type='checkbox']):not([type='radio']),
-textarea,
-button,
-.button-link {
-  border-radius: 0.5rem;
-  border: 1px solid #d1d5db;
-  padding: 0.55rem 0.7rem;
-  font-size: 0.95rem;
-}
-
-.switch-row {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.65rem;
-}
-
-.switch-row input[type='checkbox'] {
-  width: 1.1rem;
-  height: 1.1rem;
-}
-
-button,
-.button-link {
-  border-color: #2563eb;
-  background: #2563eb;
-  color: #fff;
-  cursor: pointer;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.branches-layout {
-  margin-top: 0.75rem;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1rem;
-}
-
-.branch-column h3 {
-  margin: 0 0 0.6rem;
-}
-
-.branch-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-}
-
-.branch-card,
-.merge-card {
-  border: 1px solid #e5e7eb;
-  border-radius: 0.6rem;
-  padding: 0.75rem;
-}
-
-.branch-card {
-  display: grid;
-  grid-template-rows: auto auto auto minmax(6.5rem, 6.5rem) auto;
-}
-
-.topic-value {
-  margin-top: 0.25rem;
-  font-size: 1.05rem;
-  font-weight: 600;
-}
-
-.summary-text {
-  margin: 0.35rem 0 0;
-  overflow-y: auto;
-  line-height: 1.35;
-  padding-right: 0.2rem;
-}
-
-.next-layout {
-  margin-top: 0.75rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.85rem;
-}
-
-.suggestions {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.6rem;
-}
-
-.suggestions li {
-  min-width: 0;
-}
-
-.suggestion-button {
-  width: 100%;
-  background: #1f6a8d;
-  color: #f7fafc;
-  border-color: #145174;
-  border-width: 2px;
-  min-height: 3.5rem;
-  font-size: 0.95rem;
-}
-
-.suggestion-chip {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: 2px solid #145174;
-  border-radius: 0.5rem;
-  min-height: 3.5rem;
-  padding: 0.35rem 0.55rem;
-  background: #e8f3f8;
-  color: #1f6a8d;
-  font-size: 0.95rem;
-}
-
-.choice-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 0.7rem;
-}
-
-.choice-row button {
-  min-width: 9.5rem;
-  min-height: 3.5rem;
-}
-
-.muted {
-  color: #6b7280;
-}
-
-.error {
-  margin-top: 1rem;
-  color: #b91c1c;
-  font-weight: 500;
-}
-
-@media (max-width: 900px) {
-  .form-grid,
-  .branches-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .suggestions {
-    grid-template-columns: 1fr;
-  }
-
-  .choice-row {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

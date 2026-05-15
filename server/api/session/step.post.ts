@@ -1,4 +1,5 @@
 import { generateStepSummaryAndSuggestions } from '../../utils/ai-generation'
+import { protectAiUsageEndpoint } from '../../utils/ai-access-guard'
 import { addStepToActiveSession, getActiveSessionWithSteps, type BranchSide } from '../../utils/knowledge-store'
 
 interface AddStepBody {
@@ -43,6 +44,7 @@ async function generateStepWithSuggestionRetry(input: {
 }
 
 export default defineEventHandler(async event => {
+  protectAiUsageEndpoint(event)
   const body = await readBody<AddStepBody>(event)
   const branch = normalizeBranch(body.branch)
   const keyword = typeof body.keyword === 'string' ? body.keyword.trim() : ''

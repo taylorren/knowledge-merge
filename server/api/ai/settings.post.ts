@@ -1,4 +1,5 @@
 import { type AiProvider, updateAiSettings } from '../../utils/knowledge-store'
+import { protectAiUsageEndpoint } from '../../utils/ai-access-guard'
 
 interface UpdateAiSettingsBody {
   activeProvider?: unknown
@@ -13,6 +14,7 @@ function normalizeActiveProvider(value: unknown): AiProvider | undefined {
 }
 
 export default defineEventHandler(async event => {
+  protectAiUsageEndpoint(event)
   const body = await readBody<UpdateAiSettingsBody>(event)
   const activeProvider = normalizeActiveProvider(body.activeProvider)
 

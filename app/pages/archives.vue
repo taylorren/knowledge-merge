@@ -8,7 +8,7 @@
 
       <section class="card">
         <div class="top-row">
-          <NuxtLink class="secondary-link" to="/">← Back to main</NuxtLink>
+          <NuxtLink class="secondary-link" to="/">← Back to login</NuxtLink>
           <button v-if="pageMode === 'detail'" class="secondary-button" type="button" @click="openList">
             Back to list
           </button>
