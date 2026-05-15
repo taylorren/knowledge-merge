@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createError, getRequestIP, type H3Event } from 'h3'
 import { requireAuthenticatedUser } from './password-auth'
 
@@ -5,10 +6,15 @@ interface RateBucket {
   count: number
   resetAt: number
 }
+interface ReplayBucket {
+  lastSeenAt: number
+}
 
 declare global {
   // eslint-disable-next-line no-var
   var __aiAccessRateBuckets: Map<string, RateBucket> | undefined
+  // eslint-disable-next-line no-var
+  var __aiAccessReplayBuckets: Map<string, ReplayBucket> | undefined
 }
 
 
@@ -48,6 +54,27 @@ function getRateBuckets(): Map<string, RateBucket> {
   return globalThis.__aiAccessRateBuckets
 }
 
+function getReplayProtectionWindowMs(): number {
+  const raw = process.env.AI_REPLAY_PROTECTION_WINDOW_MS?.trim()
+  if (!raw) {
+    return 15_000
+  }
+
+  const parsed = Number.parseInt(raw, 10)
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return 15_000
+  }
+
+  return parsed
+}
+
+function getReplayBuckets(): Map<string, ReplayBucket> {
+  if (!globalThis.__aiAccessReplayBuckets) {
+    globalThis.__aiAccessReplayBuckets = new Map<string, ReplayBucket>()
+  }
+
+  return globalThis.__aiAccessReplayBuckets
+}
 function pruneExpiredBuckets(buckets: Map<string, RateBucket>, now: number): void {
   for (const [key, bucket] of buckets.entries()) {
     if (now >= bucket.resetAt) {
@@ -56,6 +83,17 @@ function pruneExpiredBuckets(buckets: Map<string, RateBucket>, now: number): voi
   }
 }
 
+function pruneExpiredReplayBuckets(
+  buckets: Map<string, ReplayBucket>,
+  now: number,
+  replayWindowMs: number
+): void {
+  for (const [key, bucket] of buckets.entries()) {
+    if (now - bucket.lastSeenAt >= replayWindowMs) {
+      buckets.delete(key)
+    }
+  }
+}
 function enforceRateLimit(event: H3Event): void {
   const limit = getRateLimitPerMinute()
   if (limit <= 0) {
@@ -94,7 +132,52 @@ function enforceRateLimit(event: H3Event): void {
   bucket.count += 1
 }
 
-export function protectAiUsageEndpoint(event: H3Event): void {
-  requireAuthenticatedUser(event)
+function buildReplayFingerprint(scope: string, fingerprint: string): string {
+  return createHash('sha256').update(`${scope}\n${fingerprint}`).digest('hex')
+}
+
+function enforceReplayProtection(input: {
+  username: string
+  scope: string
+  fingerprint: string
+}): void {
+  const replayWindowMs = getReplayProtectionWindowMs()
+  const now = Date.now()
+  const buckets = getReplayBuckets()
+  pruneExpiredReplayBuckets(buckets, now, replayWindowMs)
+
+  const replayFingerprint = buildReplayFingerprint(input.scope, input.fingerprint)
+  const bucketKey = `${input.username}:${replayFingerprint}`
+  const bucket = buckets.get(bucketKey)
+
+  if (bucket && now - bucket.lastSeenAt < replayWindowMs) {
+    throw createError({
+      statusCode: 409,
+      statusMessage:
+        'Duplicate request blocked to prevent accidental repeated AI token usage. Please wait briefly and retry if needed.'
+    })
+  }
+
+  buckets.set(bucketKey, {
+    lastSeenAt: now
+  })
+}
+
+export function requireAuthenticatedWriteEndpoint(event: H3Event): string {
+  return requireAuthenticatedUser(event)
+}
+
+export function protectAiUsageForAuthenticatedUser(
+  event: H3Event,
+  username: string,
+  input?: { scope: string; fingerprint: string }
+): void {
   enforceRateLimit(event)
+  if (input) {
+    enforceReplayProtection({
+      username,
+      scope: input.scope,
+      fingerprint: input.fingerprint
+    })
+  }
 }

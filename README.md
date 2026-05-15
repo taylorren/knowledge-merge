@@ -39,6 +39,7 @@ APP_AUTH_USERNAME=admin
 APP_AUTH_PASSWORD=replace-with-strong-password
 AUTH_SESSION_TTL_HOURS=24
 AI_MAX_REQUESTS_PER_MINUTE=20
+AI_REPLAY_PROTECTION_WINDOW_MS=15000
 ```
 
 Notes:
@@ -50,6 +51,7 @@ Notes:
 - Write routes that can trigger AI usage require an authenticated session cookie.
 - `AUTH_SESSION_TTL_HOURS` controls login session expiration (sliding expiration, default 24h).
 - `AI_MAX_REQUESTS_PER_MINUTE` applies an in-memory per-IP limit to protected write routes (`0` disables the limit).
+- `AI_REPLAY_PROTECTION_WINDOW_MS` blocks rapid duplicate AI-consuming requests for the same user and payload (default 15s).
 - Archive browsing endpoints remain publicly readable.
 
 ## Install and run

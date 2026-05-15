@@ -1,5 +1,8 @@
 import { generateStepSummaryAndSuggestions } from '../../utils/ai-generation'
-import { protectAiUsageEndpoint } from '../../utils/ai-access-guard'
+import {
+  protectAiUsageForAuthenticatedUser,
+  requireAuthenticatedWriteEndpoint
+} from '../../utils/ai-access-guard'
 import { addStepToActiveSession, startNewSession, type BranchSide } from '../../utils/knowledge-store'
 
 interface StartSessionBody {
@@ -22,7 +25,7 @@ async function generateStepWithSuggestionRetry(input: {
 }
 
 export default defineEventHandler(async event => {
-  protectAiUsageEndpoint(event)
+  const username = requireAuthenticatedWriteEndpoint(event)
   const body = await readBody<StartSessionBody>(event)
   const leftTopic = typeof body.leftTopic === 'string' ? body.leftTopic.trim() : ''
   const rightTopic = typeof body.rightTopic === 'string' ? body.rightTopic.trim() : ''
@@ -33,6 +36,10 @@ export default defineEventHandler(async event => {
       statusMessage: 'Both leftTopic and rightTopic are required.'
     })
   }
+  protectAiUsageForAuthenticatedUser(event, username, {
+    scope: 'session-start',
+    fingerprint: `${leftTopic}\n${rightTopic}`
+  })
 
   try {
     let activeSession = startNewSession(leftTopic, rightTopic)

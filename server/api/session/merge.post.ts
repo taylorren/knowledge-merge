@@ -1,5 +1,8 @@
 import { generateMergeNarrative } from '../../utils/ai-generation'
-import { protectAiUsageEndpoint } from '../../utils/ai-access-guard'
+import {
+  protectAiUsageForAuthenticatedUser,
+  requireAuthenticatedWriteEndpoint
+} from '../../utils/ai-access-guard'
 import { declareMergeForActiveSession, getActiveSessionWithSteps } from '../../utils/knowledge-store'
 
 interface MergeBody {
@@ -8,7 +11,7 @@ interface MergeBody {
 }
 
 export default defineEventHandler(async event => {
-  protectAiUsageEndpoint(event)
+  const username = requireAuthenticatedWriteEndpoint(event)
   const body = await readBody<MergeBody>(event)
   const mergedConcept = typeof body.mergedConcept === 'string' ? body.mergedConcept.trim() : ''
   const narrative = typeof body.narrative === 'string' ? body.narrative.trim() : undefined
@@ -23,6 +26,10 @@ export default defineEventHandler(async event => {
   try {
     let resolvedNarrative = narrative
     if (!resolvedNarrative) {
+      protectAiUsageForAuthenticatedUser(event, username, {
+        scope: 'session-merge',
+        fingerprint: mergedConcept
+      })
       const activeSession = getActiveSessionWithSteps()
       if (!activeSession) {
         throw new Error('No active session found. Start a new session first.')

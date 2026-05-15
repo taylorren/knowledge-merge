@@ -1,5 +1,8 @@
 import { generateStepSummaryAndSuggestions } from '../../utils/ai-generation'
-import { protectAiUsageEndpoint } from '../../utils/ai-access-guard'
+import {
+  protectAiUsageForAuthenticatedUser,
+  requireAuthenticatedWriteEndpoint
+} from '../../utils/ai-access-guard'
 import { addStepToActiveSession, getActiveSessionWithSteps, type BranchSide } from '../../utils/knowledge-store'
 
 interface AddStepBody {
@@ -44,7 +47,7 @@ async function generateStepWithSuggestionRetry(input: {
 }
 
 export default defineEventHandler(async event => {
-  protectAiUsageEndpoint(event)
+  const username = requireAuthenticatedWriteEndpoint(event)
   const body = await readBody<AddStepBody>(event)
   const branch = normalizeBranch(body.branch)
   const keyword = typeof body.keyword === 'string' ? body.keyword.trim() : ''
@@ -68,8 +71,13 @@ export default defineEventHandler(async event => {
   try {
     let resolvedSummary = summary || undefined
     let resolvedSuggestions = suggestions
+    const needsAiGeneration = !resolvedSummary || resolvedSuggestions.length === 0
 
-    if (!resolvedSummary || resolvedSuggestions.length === 0) {
+    if (needsAiGeneration) {
+      protectAiUsageForAuthenticatedUser(event, username, {
+        scope: `session-step-${branch}`,
+        fingerprint: keyword
+      })
       const activeSession = getActiveSessionWithSteps()
       if (!activeSession) {
         throw new Error('No active session found. Start a new session first.')
